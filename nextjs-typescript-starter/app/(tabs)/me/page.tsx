@@ -4,12 +4,15 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProviders } from 'app/components/providers';
 import { LoginPopup } from 'app/components/login-popup';
+import { fetchProgress } from 'app/lib/api';
 import { getBooks } from 'app/lib/mock-data';
+import type { ProgressRow } from 'app/lib/mock-data';
 
 export default function MePage() {
   const router = useRouter();
-  const { user, logout, getProgressList } = useProviders();
+  const { user, logout } = useProviders();
   const [popupOpen, setPopupOpen] = useState(false);
+  const [progressList, setProgressList] = useState<ProgressRow[]>([]);
 
   // 支持 /me?login=1 打开登录弹窗
   useEffect(() => {
@@ -20,8 +23,26 @@ export default function MePage() {
     }
   }, []);
 
+  // 已登录：通过 API 拉取真实学习进度
+  useEffect(() => {
+    if (!user) {
+      setProgressList([]);
+      return;
+    }
+    let cancelled = false;
+    fetchProgress(user.id)
+      .then((list) => {
+        if (!cancelled) setProgressList(list);
+      })
+      .catch(() => {
+        if (!cancelled) setProgressList([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   const isLoggedIn = !!user;
-  const progressList = getProgressList();
   const books = getBooks();
   const cumulative = progressList.reduce((sum, p) => sum + p.learnedCount, 0);
 

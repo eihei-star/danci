@@ -8,6 +8,13 @@
       "when": 1788182529675,
       "tag": "0000_stale_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788189370091,
+      "tag": "0001_steady_xorn",
+      "breakpoints": true
     }
   ]
 }

@@ -90,3 +90,64 @@ export const learningProgress = pgTable(
     index('idx_progress_user').on(t.userId, t.updatedAt),
   ],
 );
+
+// ------------------------------------------------------------
+// 用户·单词书学习进度（书级）
+// 一人一书一条：(user_id, book_id) 唯一，写库用「存在则更新」。
+// 用途：首页「最近学习」（按 updated_at 取最新）、学习页起始位置（last_word_rank + 1）。
+// ------------------------------------------------------------
+export const userBookProgress = pgTable(
+  'user_book_progress',
+  {
+    id: bigint('id', { mode: 'number' })
+      .generatedByDefaultAsIdentity()
+      .primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    bookId: text('book_id')
+      .notNull()
+      .references(() => books.bookId, { onDelete: 'cascade' }),
+    learnedCount: integer('learned_count').notNull().default(0),
+    lastWordRank: integer('last_word_rank').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('user_book_progress_user_book_unique').on(t.userId, t.bookId),
+    index('idx_user_book_progress_user_updated').on(t.userId, t.updatedAt),
+  ],
+);
+
+// ------------------------------------------------------------
+// 用户·词级学习进度（词级）
+// 记录每个已学单词，一人一词一条：(user_id, book_id, word_rank) 唯一。
+// 用途：后续可精确回溯某词是否学过（支持乱序/复习场景）。
+// ------------------------------------------------------------
+export const userWordProgress = pgTable(
+  'user_word_progress',
+  {
+    id: bigint('id', { mode: 'number' })
+      .generatedByDefaultAsIdentity()
+      .primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    bookId: text('book_id')
+      .notNull()
+      .references(() => books.bookId, { onDelete: 'cascade' }),
+    wordRank: integer('word_rank').notNull(),
+    learnedAt: timestamp('learned_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('user_word_progress_user_book_rank_unique').on(
+      t.userId,
+      t.bookId,
+      t.wordRank,
+    ),
+    index('idx_user_word_progress_user').on(t.userId),
+  ],
+);

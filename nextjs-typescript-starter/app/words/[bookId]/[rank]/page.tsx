@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getBook, getWord } from 'app/lib/mock-data';
+import { fetchWords } from 'app/lib/api';
+import type { WordRow } from 'app/lib/mock-data';
 
 export default function WordDetailPage() {
   const params = useParams();
@@ -11,10 +12,37 @@ export default function WordDetailPage() {
   const router = useRouter();
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const word = getWord(bookId, rank);
+  // 通过 bookId+rank 从真实 words 数据中取单词
+  const [word, setWord] = useState<WordRow | undefined>();
+  const [bookTitle, setBookTitle] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchWords(bookId);
+        if (cancelled) return;
+        setWord(data.words.find((w) => w.wordRank === rank));
+        setBookTitle(data.book?.title ?? '单词');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bookId, rank]);
+
+  if (loading) {
+    return (
+      <div className="grid min-h-screen place-items-center text-gray-400">
+        加载中…
+      </div>
+    );
+  }
   if (!word) return <NotFound onBack={() => router.back()} />;
 
-  const book = getBook(bookId);
   const c = word.content.word.content;
   const audioBase = process.env.NEXT_PUBLIC_AUDIO_BASE || 'https://dict.youdao.com/dictvoice?audio=';
 
@@ -38,7 +66,7 @@ export default function WordDetailPage() {
           ←
         </button>
         <p className="text-base font-semibold text-gray-900">
-          {book?.title ?? '单词'}
+          {bookTitle}
         </p>
       </header>
 

@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProviders } from 'app/components/providers';
+import { fetchProgress } from 'app/lib/api';
 import type { ProgressRow } from 'app/lib/mock-data';
 
 // 首页所需的最小单词书结构（与 books 表物理列对应）
@@ -16,11 +18,29 @@ export interface BookCard {
 
 export function HomeContent({ books }: { books: BookCard[] }) {
   const router = useRouter();
-  const { user, getProgress, getProgressList, startLearning } = useProviders();
+  const { user } = useProviders();
+  const [recent, setRecent] = useState<ProgressRow | null>(null);
 
   const isLoggedIn = !!user;
-  const progressList = getProgressList();
-  const recent = isLoggedIn && progressList.length > 0 ? progressList[0] : null;
+
+  // 已登录：通过 API 拉取真实学习进度，取最近学习的一本
+  useEffect(() => {
+    if (!user) {
+      setRecent(null);
+      return;
+    }
+    let cancelled = false;
+    fetchProgress(user.id)
+      .then((list) => {
+        if (!cancelled) setRecent(list.length > 0 ? list[0] : null);
+      })
+      .catch(() => {
+        if (!cancelled) setRecent(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const openBook = (book: BookCard) => {
     if (!isLoggedIn) {
@@ -28,9 +48,7 @@ export function HomeContent({ books }: { books: BookCard[] }) {
       router.push('/me?login=1');
       return;
     }
-    const p = getProgress(book.bookId);
-    const startIndex = p ? p.lastWordRank : 0;
-    startLearning(book.bookId, startIndex);
+    // 学习页通过 bookId 拉取真实单词并计算续学位置
     router.push(`/books/${book.bookId}`);
   };
 
