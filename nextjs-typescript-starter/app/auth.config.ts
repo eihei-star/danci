@@ -9,17 +9,9 @@ export const authConfig = {
     // while this file is also used in non-Node.js environments
   ],
   callbacks: {
-    authorized({ auth, request: { nextUrl } }) {
-      let isLoggedIn = !!auth?.user;
-      let isOnDashboard = nextUrl.pathname.startsWith('/protected');
-
-      if (isOnDashboard) {
-        if (isLoggedIn) return true;
-        return false; // Redirect unauthenticated users to login page
-      } else if (isLoggedIn) {
-        return Response.redirect(new URL('/protected', nextUrl));
-      }
-
+    authorized() {
+      // H5 登录态由客户端 mock 鉴权管理（见 components/providers.tsx），
+      // 页面级访问控制在对应 client 组件中完成，中间件全局放行。
       return true;
     },
   },
