@@ -53,16 +53,6 @@ export async function getBookByBookId(bookId: string) {
   return rows[0];
 }
 
-// 确保「当前用户」在 User 表中存在。当前阶段登录为 mock（userId 恒为 1），
-// learning 进度外键引用 "User"(id)，插入前先保证该行存在。
-// 接入真实 NextAuth 后应改用会话中的 userId，无需再调用此函数。
-export async function ensureUserExists(userId: number, email?: string) {
-  await client`
-    INSERT INTO "User" (id, email) VALUES (${userId}, ${email ?? `user${userId}`})
-    ON CONFLICT (id) DO NOTHING
-  `;
-}
-
 // 单词：按 bookId 获取该书全部单词（按 wordRank 升序）
 export async function getWordsByBook(bookId: string) {
   const rows = await db

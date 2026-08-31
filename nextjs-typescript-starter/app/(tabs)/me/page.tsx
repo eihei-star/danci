@@ -30,7 +30,7 @@ export default function MePage() {
       return;
     }
     let cancelled = false;
-    fetchProgress(user.id)
+    fetchProgress()
       .then((list) => {
         if (!cancelled) setProgressList(list);
       })

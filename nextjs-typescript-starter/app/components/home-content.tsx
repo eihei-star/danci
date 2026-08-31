@@ -30,7 +30,7 @@ export function HomeContent({ books }: { books: BookCard[] }) {
       return;
     }
     let cancelled = false;
-    fetchProgress(user.id)
+    fetchProgress()
       .then((list) => {
         if (!cancelled) setRecent(list.length > 0 ? list[0] : null);
       })

@@ -29,23 +29,21 @@ export async function fetchWords(bookId: string): Promise<WordsResponse> {
   );
 }
 
-// 获取当前用户的书级学习进度列表（按最近学习时间倒序）
-export async function fetchProgress(userId: number): Promise<ProgressRow[]> {
-  const data = await toJson<ProgressResponse>(
-    await fetch(`/api/progress?userId=${userId}`),
-  );
+// 获取当前登录用户的书级学习进度列表（按最近学习时间倒序）
+// 用户身份由会话 cookie 提供，无需传参。
+export async function fetchProgress(): Promise<ProgressRow[]> {
+  const data = await toJson<ProgressResponse>(await fetch('/api/progress'));
   return data.progress;
 }
 
 // 保存学习进度（更新书级进度 + 记录词级进度）
 export async function saveProgress(
-  userId: number,
   bookId: string,
   lastWordRank: number,
 ): Promise<void> {
   await fetch('/api/progress', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, bookId, lastWordRank }),
+    body: JSON.stringify({ bookId, lastWordRank }),
   });
 }

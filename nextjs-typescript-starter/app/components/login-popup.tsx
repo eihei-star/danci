@@ -17,6 +17,7 @@ export function LoginPopup({
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -41,8 +42,15 @@ export function LoginPopup({
     onClose();
   };
 
-  const submit = () => {
-    const err = tab === 'login' ? login(email, password) : register(email, password);
+  const submit = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setError(null);
+    const err =
+      tab === 'login'
+        ? await login(email, password)
+        : await register(email, password);
+    setSubmitting(false);
     if (err) {
       setError(err);
       return;
@@ -124,14 +132,15 @@ export function LoginPopup({
 
           <button
             type="submit"
-            className="h-11 w-full rounded-md bg-indigo-600 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            disabled={submitting}
+            className="h-11 w-full rounded-md bg-indigo-600 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {tab === 'login' ? '登录' : '注册'}
+            {submitting ? '提交中…' : tab === 'login' ? '登录' : '注册'}
           </button>
         </form>
 
         <p className="mt-4 text-center text-xs text-gray-400">
-          演示账号：demo@example.com / 123456
+          无账号？切到「注册」Tab 使用真实邮箱注册
         </p>
       </div>
     </div>

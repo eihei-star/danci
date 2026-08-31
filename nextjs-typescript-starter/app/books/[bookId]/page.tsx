@@ -35,7 +35,7 @@ export default function LearningPage() {
       try {
         const [data, progress] = await Promise.all([
           fetchWords(bookId),
-          fetchProgress(user!.id),
+          fetchProgress(),
         ]);
         if (cancelled) return;
         setWords(data.words);
@@ -59,7 +59,7 @@ export default function LearningPage() {
   const currentWord = words[currentIndex];
 
   const persist = (word: WordRow) => {
-    saveProgress(user!.id, bookId, word.wordRank).catch(() => {
+    saveProgress(bookId, word.wordRank).catch(() => {
       /* 进度保存失败不阻断切词，下次会重试 */
     });
   };

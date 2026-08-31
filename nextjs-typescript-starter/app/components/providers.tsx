@@ -1,8 +1,9 @@
 'use client';
 
-// 轻量 mock 鉴权 + 学习进度状态，使用 localStorage 持久化，
-// 用于在未接入真实 NextAuth/后端前驱动 UI 流程。
-// 后续接入真实接口时，仅需在本文件替换数据来源，组件无需改动。
+// 真实认证：直接调用 NextAuth 的 REST 端点（CSRF → credentials 回调 → 读取会话）。
+// 不使用 next-auth/react 的 signIn（其在 5.0.0-beta.4 下会抛
+// "Failed to construct 'URL': Invalid base URL"，服务端实际正常，故在此手动封装）。
+// 登录态基于 httpOnly 会话 cookie，刷新页面可通过 /api/auth/session 恢复。
 
 import {
   createContext,
@@ -12,14 +13,6 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import {
-  getBook,
-  getWordsByBook,
-  mockProgress,
-  type Book,
-  type ProgressRow,
-  type WordRow,
-} from 'app/lib/mock-data';
 
 export interface MockUser {
   id: number;
@@ -28,168 +21,129 @@ export interface MockUser {
 
 interface ProvidersValue {
   user: MockUser | null;
-  login: (email: string, password: string) => string | null;
-  register: (email: string, password: string) => string | null;
-  logout: () => void;
-  // 学习进度
-  getProgress: (bookId: string) => ProgressRow | undefined;
-  getProgressList: () => ProgressRow[];
-  saveProgress: (bookId: string, lastWordRank: number, learnedCount: number) => void;
-  // 学习页状态
-  book: Book | undefined;
-  words: WordRow[];
-  currentIndex: number;
-  setCurrentIndex: (i: number) => void;
-  startLearning: (bookId: string, startIndex: number) => void;
+  status: 'loading' | 'authenticated' | 'unauthenticated';
+  login: (email: string, password: string) => Promise<string | null>;
+  register: (email: string, password: string) => Promise<string | null>;
+  logout: () => Promise<void>;
 }
-
-const USER_KEY = 'danci.mock.user';
-const PROG_KEY = 'danci.mock.progress';
-const USERS_KEY = 'danci.mock.users';
-
-// 已注册用户（用于演示「邮箱已存在」）
-const REGISTERED_EMAILS = new Set(['demo@example.com']);
 
 const Ctx = createContext<ProvidersValue | null>(null);
 
-function readUsers(): string[] {
-  try {
-    return JSON.parse(localStorage.getItem(USERS_KEY) ?? '[]');
-  } catch {
-    return [];
+async function getCsrfToken(): Promise<string> {
+  const r = await fetch('/api/auth/csrf');
+  const d = await r.json();
+  return d.csrfToken;
+}
+
+// 发起 credentials 登录回调（浏览器会自动带上 csrf cookie，成功后种下会话 cookie）
+async function postCredentials(email: string, password: string) {
+  const csrfToken = await getCsrfToken();
+  await fetch('/api/auth/callback/credentials', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      csrfToken,
+      email,
+      password,
+      redirect: false,
+      json: true,
+    }),
+  });
+}
+
+// 读取当前会话用户
+async function fetchSessionUser(): Promise<MockUser | null> {
+  const r = await fetch('/api/auth/session');
+  const d = await r.json();
+  if (d?.user?.id) {
+    return { id: Number(d.user.id), email: String(d.user.email ?? '') };
   }
+  return null;
 }
 
 export function Providers({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MockUser | null>(null);
-  const [users, setUsers] = useState<string[]>([]);
-  const [progress, setProgress] = useState<ProgressRow[]>(mockProgress);
-  // 学习页状态
-  const [book, setBook] = useState<Book | undefined>();
-  const [words, setWords] = useState<WordRow[]>([]);
-  const [currentIndex, setCurrentIndexState] = useState(0);
+  const [status, setStatus] = useState<
+    'loading' | 'authenticated' | 'unauthenticated'
+  >('loading');
 
-  // 初始化：从 localStorage 恢复
+  // 初始化：从会话恢复登录态（刷新页面后仍保持登录）
   useEffect(() => {
-    const u = localStorage.getItem(USER_KEY);
-    if (u) {
-      try {
-        setUser(JSON.parse(u));
-      } catch {
-        /* ignore */
-      }
-    }
-    const p = localStorage.getItem(PROG_KEY);
-    if (p) {
-      try {
-        setProgress(JSON.parse(p));
-      } catch {
-        /* ignore */
-      }
-    }
-    setUsers(readUsers());
-  }, []);
-
-  const persistUser = useCallback((u: MockUser | null) => {
-    if (u) localStorage.setItem(USER_KEY, JSON.stringify(u));
-    else localStorage.removeItem(USER_KEY);
-    setUser(u);
-  }, []);
-
-  const persistProgress = useCallback((next: ProgressRow[]) => {
-    localStorage.setItem(PROG_KEY, JSON.stringify(next));
-    setProgress(next);
+    let cancelled = false;
+    fetchSessionUser()
+      .then((u) => {
+        if (cancelled) return;
+        setUser(u);
+        setStatus(u ? 'authenticated' : 'unauthenticated');
+      })
+      .catch(() => {
+        if (!cancelled) setStatus('unauthenticated');
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const login = useCallback(
-    (email: string, password: string): string | null => {
-      if (!email.trim() || !password) return '请输入邮箱和密码';
-      if (email === 'demo@example.com' && password !== '123456') {
+    async (email: string, password: string): Promise<string | null> => {
+      try {
+        await postCredentials(email, password);
+        const u = await fetchSessionUser();
+        if (!u) return '邮箱或密码错误';
+        setUser(u);
+        setStatus('authenticated');
+        return null;
+      } catch {
         return '邮箱或密码错误';
       }
-      persistUser({ id: 1, email: email.trim() });
-      return null;
     },
-    [persistUser],
-  );
-
-  const register = useCallback(
-    (email: string, password: string): string | null => {
-      if (!email.trim() || !password) return '请输入邮箱和密码';
-      if (password.length < 6) return '密码至少需要 6 位';
-      if (REGISTERED_EMAILS.has(email.trim()) || users.includes(email.trim())) {
-        return '邮箱已存在，请直接登录';
-      }
-      persistUser({ id: 1, email: email.trim() });
-      return null;
-    },
-    [users, persistUser],
-  );
-
-  const logout = useCallback(() => {
-    persistUser(null);
-  }, [persistUser]);
-
-  const getProgress = useCallback(
-    (bookId: string) => progress.find((p) => p.bookId === bookId),
-    [progress],
-  );
-
-  const getProgressList = useCallback(
-    () =>
-      [...progress].sort(
-        (a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt),
-      ),
-    [progress],
-  );
-
-  const saveProgress = useCallback(
-    (bookId: string, lastWordRank: number, learnedCount: number) => {
-      const existing = progress.find((p) => p.bookId === bookId);
-      const next: ProgressRow = {
-        id: existing?.id ?? Date.now(),
-        userId: 1,
-        bookId,
-        learnedCount,
-        lastWordRank,
-        updatedAt: new Date().toISOString(),
-      };
-      persistProgress(
-        existing
-          ? progress.map((p) => (p.bookId === bookId ? next : p))
-          : [...progress, next],
-      );
-    },
-    [progress, persistProgress],
-  );
-
-  const setCurrentIndex = useCallback(
-    (i: number) => setCurrentIndexState(i),
     [],
   );
 
-  const startLearning = useCallback((bookId: string, startIndex: number) => {
-    setBook(getBook(bookId));
-    setWords(getWordsByBook(bookId));
-    setCurrentIndexState(startIndex);
+  const register = useCallback(
+    async (email: string, password: string): Promise<string | null> => {
+      try {
+        const r = await fetch('/api/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) return data?.error || '注册失败';
+        // 注册成功则自动登录
+        await postCredentials(email, password);
+        const u = await fetchSessionUser();
+        if (!u) return '注册成功，但自动登录失败，请手动登录';
+        setUser(u);
+        setStatus('authenticated');
+        return null;
+      } catch {
+        return '网络错误，请稍后重试';
+      }
+    },
+    [],
+  );
+
+  const logout = useCallback(async () => {
+    try {
+      const csrfToken = await getCsrfToken();
+      await fetch('/api/auth/signout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csrfToken, json: true }),
+      });
+    } catch {
+      /* 忽略退出接口异常 */
+    }
+    setUser(null);
+    setStatus('unauthenticated');
   }, []);
 
-  const value: ProvidersValue = {
-    user,
-    login,
-    register,
-    logout,
-    getProgress,
-    getProgressList,
-    saveProgress,
-    book,
-    words,
-    currentIndex,
-    setCurrentIndex,
-    startLearning,
-  };
-
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={{ user, status, login, register, logout }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export function useProviders(): ProvidersValue {
